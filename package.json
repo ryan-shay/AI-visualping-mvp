@@ -1,0 +1,21 @@
+{
+  "name": "visualwatch-gpt-discord",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "start": "node --enable-source-maps dist/index.js",
+    "build": "tsc",
+    "playwright:install": "npx playwright install --with-deps"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.48.2",
+    "dotenv": "^16.4.5",
+    "openai": "^4.57.0",
+    "undici": "^6.19.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
