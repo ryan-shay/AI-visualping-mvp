@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "npx tsx src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
     "build": "tsc",
     "playwright:install": "npx playwright install --with-deps"
