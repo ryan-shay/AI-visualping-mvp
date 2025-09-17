@@ -124,7 +124,7 @@ function createSimpleSiteFromUrl(url: string, index: number, globalConfig: Globa
     check_max: globalConfig.GLOBAL_CHECK_MAX,
     wait_until: globalConfig.WAIT_UNTIL,
     headless: globalConfig.PLAYWRIGHT_HEADLESS || globalConfig.HEADLESS,
-    relevance_mode: 'loose', // Simple mode defaults to loose
+    relevance_mode: 'strict', // Simple mode defaults to loose
     goal_keywords: ['available', 'availability', 'open', 'book', 'reserve', 'slots', 'seats', 'tables'],
     goal_negative_hints: ['sold out', 'fully booked', 'waitlist', 'notify'],
     watch_goal: 'Monitor for any meaningful changes'
