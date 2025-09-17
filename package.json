@@ -12,7 +12,8 @@
     "@playwright/test": "^1.48.2",
     "dotenv": "^16.4.5",
     "openai": "^4.57.0",
-    "undici": "^6.19.8"
+    "undici": "^6.19.8",
+    "yaml": "^2.5.1"
   },
   "devDependencies": {
     "tsx": "^4.19.1",

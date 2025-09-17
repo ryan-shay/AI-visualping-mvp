@@ -1,0 +1,30 @@
+# Optional global defaults (inheritance)
+defaults:
+  check_min: 4
+  check_max: 6
+  wait_until: networkidle
+  headless: true
+  watch_goal: "Alert only if there is new availability for the target date and party size."
+  goal_keywords: ["available","availability","open","book","reserve","slots","seats","tables"]
+  goal_negative_hints: ["sold out","fully booked","waitlist","notify"]
+  relevance_mode: "strict"
+
+sites:
+  - id: "pocket-concierge"
+    url: "https://pocket-concierge.jp/en/restaurants/243892?extlink=pa-jp-ICS-PC_243892_HP_EN&date=2025-10-21&partySize=4&serviceType=DINNER"
+    selector: "main"         # optional; fallback to main/body
+    check_min: 4             # override defaults if present
+    check_max: 6
+    wait_until: "networkidle"
+    headless: true
+    watch_goal: "Alert only if there is new availability for the target date and party size."
+    goal_date: "2025-10-21"
+    goal_party_size: "4"
+    goal_keywords: ["available","availability","open","book","reserve","slots","seats","tables"]
+    goal_negative_hints: ["sold out","fully booked","waitlist","notify"]
+    relevance_mode: "strict" # strict = notify only if relevant; loose = always notify but label relevance
+    scrub_patterns:          # optional text scrubs before hashing
+      - pattern: "\\bUpdated at\\s*\\d{1,2}:\\d{2}(:\\d{2})?\\b"
+        flags: "i"
+      - pattern: "\\s+"
+        flags: "g"
