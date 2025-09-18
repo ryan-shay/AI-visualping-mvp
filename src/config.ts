@@ -83,7 +83,7 @@ export function loadGlobalConfig(): GlobalConfig {
     // New settings
     GLOBAL_CHECK_MIN: parseNumber(process.env.GLOBAL_CHECK_MIN, 4),
     GLOBAL_CHECK_MAX: parseNumber(process.env.GLOBAL_CHECK_MAX, 6),
-    MAX_CONCURRENCY: parseNumber(process.env.MAX_CONCURRENCY, 3),
+    MAX_CONCURRENCY: parseNumber(process.env.MAX_CONCURRENCY, 1),
     STAGGER_STARTUP_MINUTES: parseNumber(process.env.STAGGER_STARTUP_MINUTES, 3),
     SCRAPE_TIMEOUT_SECONDS: parseNumber(process.env.SCRAPE_TIMEOUT_SECONDS, 90),
     WAIT_UNTIL: (process.env.WAIT_UNTIL as any) || 'networkidle',

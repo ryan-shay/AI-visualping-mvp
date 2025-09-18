@@ -1,22 +1,43 @@
 import { chromium, Browser, BrowserContext } from '@playwright/test';
 import { log } from './logger.js';
+import { loadGlobalConfig } from './config.js';
 
 let sharedBrowser: Browser | null = null;
+let currentHeadlessMode: boolean | null = null;
 
-export async function getSharedBrowser(): Promise<Browser> {
+export async function getSharedBrowser(headless?: boolean): Promise<Browser> {
+  // Load config to get headless setting if not provided
+  if (headless === undefined) {
+    const config = loadGlobalConfig();
+    headless = config.PLAYWRIGHT_HEADLESS;
+  }
+
+  // If browser exists but with different headless mode, close it
+  if (sharedBrowser && currentHeadlessMode !== headless) {
+    log('info', `Closing browser to switch headless mode from ${currentHeadlessMode} to ${headless}`);
+    await sharedBrowser.close();
+    sharedBrowser = null;
+  }
+
   if (!sharedBrowser) {
-    log('info', 'Launching shared Chromium browser');
+    log('info', `Launching shared Chromium browser (headless: ${headless})`);
     sharedBrowser = await chromium.launch({ 
-      headless: true // Will be overridden per context if needed
+      headless: headless,
+      // Add some useful debugging options when in headfull mode
+      ...(headless === false && {
+        slowMo: 100, // Slow down actions by 100ms for visibility
+        devtools: false // Set to true if you want devtools open
+      })
     });
+    currentHeadlessMode = headless;
   }
   return sharedBrowser;
 }
 
-export async function newContext(headless: boolean = true): Promise<BrowserContext> {
-  const browser = await getSharedBrowser();
+export async function newContext(headless?: boolean): Promise<BrowserContext> {
+  const browser = await getSharedBrowser(headless);
   
-  // Note: headless is set at browser launch, but we can control other context options
+  // Create context with user agent
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36'
   });

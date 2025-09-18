@@ -3,7 +3,7 @@ defaults:
   check_min: 4
   check_max: 6
   wait_until: networkidle
-  headless: true
+  headless: false
   watch_goal: "Alert only if there is new availability for the target date and party size."
   goal_keywords: ["available","availability","open","book","reserve","slots","seats","tables"]
   goal_negative_hints: ["sold out","fully booked","waitlist","notify"]
@@ -16,7 +16,7 @@ sites:
     check_min: 4             # override defaults if present
     check_max: 6
     wait_until: "networkidle"
-    headless: true
+    headless: false
     watch_goal: "Alert only if there is new availability for the target date and party size."
     goal_date: "2025-10-21"
     goal_party_size: "4"
@@ -28,3 +28,12 @@ sites:
         flags: "i"
       - pattern: "\\s+"
         flags: "g"
+  
+  - id: "example-tock"
+    url: "https://www.exploretock.com/restaurant-example"
+    selector: "main"
+    check_min: 2             # Faster checking for demo
+    check_max: 3
+    headless: false
+    watch_goal: "Monitor for reservation availability"
+    relevance_mode: "loose"  # Different mode for testing

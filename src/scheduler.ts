@@ -8,48 +8,35 @@ import { checkHeuristic, classifyRelevance } from './relevance.js';
 import { summarizeGoalAware } from './summarize.js';
 import { postToDiscord, shouldThrottleError } from './notify.js';
 
-type SiteSchedule = {
-  site: SiteConfig;
-  nextRunAt: Date;
-  isRunning: boolean;
-};
-
-type WorkerJob = {
-  site: SiteConfig;
-  resolve: () => void;
-  reject: (error: Error) => void;
-};
+// Removed unused types - we now use simple sequential processing
 
 export class SiteScheduler {
-  private schedules: Map<string, SiteSchedule> = new Map();
-  private workerQueue: WorkerJob[] = [];
-  private activeWorkers = 0;
-  private maxConcurrency: number;
+  private sites: SiteConfig[] = [];
+  private currentSiteIndex = 0;
   private running = false;
-  private siteAddOrder = 0; // Track order sites are added for staggering
+  private cycleStartTime = 0;
 
   constructor() {
-    const config = loadGlobalConfig();
-    this.maxConcurrency = config.MAX_CONCURRENCY;
+    // No need for concurrency settings - we're going sequential
   }
 
-  private randomMinutes(min: number, max: number): number {
-    return Math.random() * (max - min) + min;
-  }
-
-  private scheduleNextRun(siteId: string): void {
-    const schedule = this.schedules.get(siteId);
-    if (!schedule) return;
-
-    const site = schedule.site;
+  /**
+   * Calculate how long to spend on each site based on desired check frequency
+   * Formula: (desired_check_minutes * 60) / total_sites = seconds_per_site
+   */
+  private calculateSiteViewTime(site: SiteConfig): number {
+    const totalSites = this.sites.length;
+    if (totalSites === 0) return 10000; // fallback to 10s
+    
     const minMinutes = site.check_min || 4;
     const maxMinutes = site.check_max || 6;
-    const delayMinutes = this.randomMinutes(minMinutes, maxMinutes);
+    const avgCheckMinutes = (minMinutes + maxMinutes) / 2;
     
-    schedule.nextRunAt = new Date(Date.now() + delayMinutes * 60 * 1000);
-    schedule.isRunning = false;
-
-    log('info', `⏰ ${siteId}: Next run in ${delayMinutes.toFixed(1)}min (${schedule.nextRunAt.toTimeString().slice(0,8)})`);
+    // Convert to milliseconds and divide by number of sites
+    const msPerSite = (avgCheckMinutes * 60 * 1000) / totalSites;
+    
+    // Minimum 10 seconds, maximum 60 seconds per site
+    return Math.max(10000, Math.min(60000, msPerSite));
   }
 
   private async processSite(site: SiteConfig): Promise<void> {
@@ -171,114 +158,77 @@ export class SiteScheduler {
     }
   }
 
-  private async worker(): Promise<void> {
+  /**
+   * Main pipeline loop - processes sites sequentially in rotation
+   */
+  private async runPipeline(): Promise<void> {
+    log('info', `🚀 Starting sequential pipeline with ${this.sites.length} sites`);
+    this.cycleStartTime = Date.now();
+    
     while (this.running) {
-      if (this.workerQueue.length === 0 || this.activeWorkers >= this.maxConcurrency) {
-        await sleep(100); // Short sleep to avoid busy waiting
+      if (this.sites.length === 0) {
+        await sleep(5000);
         continue;
       }
-
-      const job = this.workerQueue.shift();
-      if (!job) continue;
-
-      this.activeWorkers++;
       
-      // Process job asynchronously
-      this.processSite(job.site)
-        .then(() => {
-          job.resolve();
-        })
-        .catch((error) => {
-          job.reject(error);
-        })
-        .finally(() => {
-          this.activeWorkers--;
-          this.scheduleNextRun(job.site.id);
-        });
-    }
-  }
-
-  private async dispatcher(): Promise<void> {
-    while (this.running) {
-      const now = new Date();
+      // Get current site
+      const site = this.sites[this.currentSiteIndex];
+      const viewTime = this.calculateSiteViewTime(site);
       
-      // Find sites that are due for processing, but only queue one at a time to respect staggering
-      let queuedThisRound = 0;
-      const maxQueuePerRound = 1; // Only queue 1 site per dispatch round for better staggering
+      log('info', `📍 Pipeline: Processing site ${this.currentSiteIndex + 1}/${this.sites.length}: ${site.id} (${Math.round(viewTime/1000)}s)`);
       
-      for (const [siteId, schedule] of this.schedules) {
-        if (schedule.isRunning || schedule.nextRunAt > now) {
-          continue;
-        }
-
-        if (this.activeWorkers >= this.maxConcurrency || queuedThisRound >= maxQueuePerRound) {
-          break; // Wait for workers to free up or respect per-round limit
-        }
-
-        // Mark as running and queue for processing
-        schedule.isRunning = true;
-        queuedThisRound++;
+      const startTime = Date.now();
+      
+      try {
+        // Process the site
+        await this.processSite(site);
         
-        const job: WorkerJob = {
-          site: schedule.site,
-          resolve: () => {
-            log('debug', `Job completed for ${siteId}`);
-          },
-          reject: (error: Error) => {
-            log('error', `Job failed for ${siteId}`, { error: error.message });
-          }
-        };
+        // Calculate remaining time to spend on this site
+        const elapsedTime = Date.now() - startTime;
+        const remainingTime = Math.max(0, viewTime - elapsedTime);
         
-        this.workerQueue.push(job);
-        log('debug', `Queued job for ${siteId} (active: ${this.activeWorkers}/${this.maxConcurrency})`);
+        if (remainingTime > 0) {
+          log('debug', `⏱️  ${site.id}: Processing took ${Math.round(elapsedTime/1000)}s, waiting additional ${Math.round(remainingTime/1000)}s`);
+          await sleep(remainingTime);
+        }
+        
+      } catch (error) {
+        log('error', `❌ Error processing ${site.id}`, { error: error instanceof Error ? error.message : String(error) });
+        
+        // Still wait the minimum time even on error to maintain timing
+        const elapsedTime = Date.now() - startTime;
+        const remainingTime = Math.max(0, Math.min(viewTime, 10000) - elapsedTime); // At least wait 10s on error
+        
+        if (remainingTime > 0) {
+          await sleep(remainingTime);
+        }
       }
-
-      await sleep(3000); // Check every 3 seconds for more controlled dispatching
+      
+      // Move to next site
+      this.currentSiteIndex = (this.currentSiteIndex + 1) % this.sites.length;
+      
+      // Log cycle completion
+      if (this.currentSiteIndex === 0) {
+        const cycleTime = Date.now() - this.cycleStartTime;
+        log('info', `🔄 Completed full cycle in ${Math.round(cycleTime/1000)}s, starting next cycle`);
+        this.cycleStartTime = Date.now();
+      }
     }
-  }
-
-  private calculateStaggeredStartTime(siteIndex: number, totalSites: number): Date {
-    const config = loadGlobalConfig();
-    
-    // Intelligent staggering strategy:
-    // 1. Spread initial runs across configurable window to avoid simultaneous starts
-    // 2. Add some randomization to prevent predictable patterns  
-    // 3. Ensure we don't exceed concurrency limits at startup
-    
-    const baseDelayMs = 10000; // Start after 10 seconds minimum
-    const staggerWindowMs = config.STAGGER_STARTUP_MINUTES * 60 * 1000; // Configurable stagger window
-    const staggerDelayMs = (siteIndex * staggerWindowMs) / Math.max(1, totalSites - 1);
-    
-    // Add some randomization (±30 seconds) to avoid predictable timing
-    const randomOffsetMs = (Math.random() - 0.5) * 60000; // ±30 seconds
-    
-    const totalDelayMs = baseDelayMs + staggerDelayMs + randomOffsetMs;
-    
-    return new Date(Date.now() + Math.max(5000, totalDelayMs)); // Minimum 5s delay
   }
 
   public addSite(site: SiteConfig): void {
     const siteId = site.id;
     
-    if (this.schedules.has(siteId)) {
-      log('warn', `Site ${siteId} already scheduled, skipping`);
+    // Check for duplicates
+    if (this.sites.some(s => s.id === siteId)) {
+      log('warn', `Site ${siteId} already added, skipping`);
       return;
     }
 
-    // Calculate staggered start time based on order added
-    const startTime = this.calculateStaggeredStartTime(this.siteAddOrder, this.schedules.size + 1);
+    this.sites.push(site);
     
-    const schedule: SiteSchedule = {
-      site,
-      nextRunAt: startTime,
-      isRunning: false
-    };
-
-    this.schedules.set(siteId, schedule);
-    this.siteAddOrder++;
-    
-    const delayMinutes = ((startTime.getTime() - Date.now()) / 1000 / 60).toFixed(1);
-    log('info', `📍 Added site: ${siteId} → first run in ${delayMinutes}min (${startTime.toISOString()})`);
+    const viewTime = this.calculateSiteViewTime(site);
+    log('info', `📍 Added site: ${siteId} → will spend ${Math.round(viewTime/1000)}s per visit`);
   }
 
   public async start(): Promise<void> {
@@ -287,40 +237,42 @@ export class SiteScheduler {
       return;
     }
 
-    this.running = true;
-    log('info', `🚀 Starting site scheduler: ${this.schedules.size} sites, max concurrency=${this.maxConcurrency}`);
-
-    // Start worker processes
-    const workerPromises = [];
-    for (let i = 0; i < Math.min(4, this.maxConcurrency); i++) {
-      workerPromises.push(this.worker());
+    if (this.sites.length === 0) {
+      throw new Error('No sites added to scheduler');
     }
 
-    // Start dispatcher
-    const dispatcherPromise = this.dispatcher();
+    this.running = true;
+    
+    // Calculate and log timing info
+    const avgCheckMin = this.sites.reduce((sum, site) => sum + (site.check_min || 4), 0) / this.sites.length;
+    const avgCheckMax = this.sites.reduce((sum, site) => sum + (site.check_max || 6), 0) / this.sites.length;
+    const avgCheckTime = (avgCheckMin + avgCheckMax) / 2;
+    const cycleTime = avgCheckTime / this.sites.length;
+    
+    log('info', `🚀 Starting sequential pipeline:`);
+    log('info', `   • ${this.sites.length} sites`);
+    log('info', `   • ~${Math.round(cycleTime * 60)}s per site`);
+    log('info', `   • ~${Math.round(avgCheckTime)}min full cycle`);
+    log('info', `   • Each site checked every ~${Math.round(avgCheckTime)}min`);
 
-    // Wait for all processes (they run indefinitely)
-    await Promise.all([...workerPromises, dispatcherPromise]);
+    // Start the pipeline
+    await this.runPipeline();
   }
 
   public async stop(): Promise<void> {
-    log('info', 'Stopping scheduler...');
+    log('info', 'Stopping pipeline...');
     this.running = false;
-
-    // Wait for active workers to complete
-    while (this.activeWorkers > 0) {
-      log('info', `Waiting for ${this.activeWorkers} active workers to complete...`);
-      await sleep(1000);
-    }
-
-    log('info', 'Scheduler stopped');
+    log('info', 'Pipeline stopped');
   }
 
-  public getStatus(): { totalSites: number, activeWorkers: number, queuedJobs: number } {
+  public getStatus(): { totalSites: number, currentSite: string | null, cycleProgress: string } {
+    const currentSite = this.sites.length > 0 ? this.sites[this.currentSiteIndex]?.id || null : null;
+    const progress = this.sites.length > 0 ? `${this.currentSiteIndex + 1}/${this.sites.length}` : '0/0';
+    
     return {
-      totalSites: this.schedules.size,
-      activeWorkers: this.activeWorkers,
-      queuedJobs: this.workerQueue.length
+      totalSites: this.sites.length,
+      currentSite,
+      cycleProgress: progress
     };
   }
 }

@@ -2,8 +2,214 @@ import { newContext } from './browser.js';
 import { SiteConfig } from './config.js';
 import { log } from './logger.js';
 import { normalizeText, applyScrubPatterns } from './hash.js';
+import { Page } from '@playwright/test';
 
-async function scrapeWithRetry(site: SiteConfig, attempt: number = 1): Promise<string> {
+async function tryInteractWithReservationElements(page: Page, site: SiteConfig): Promise<void> {
+  const siteId = site.id;
+  
+  try {
+    // Site-specific interaction strategies
+    if (site.url.includes('exploretock.com')) {
+      log('debug', `${siteId}: Attempting Tock-specific interactions`);
+      
+      // Look for time slot buttons or reservation links
+      const timeSlotSelectors = [
+        '[data-testid="time-slot"]',
+        '.time-slot',
+        '.available-time',
+        'button[class*="time"]',
+        'a[href*="book"]',
+        'button:has-text("Reserve")',
+        'button:has-text("Book")'
+      ];
+      
+      for (const selector of timeSlotSelectors) {
+        try {
+          const element = page.locator(selector).first();
+          if (await element.isVisible({ timeout: 2000 })) {
+            log('info', `${siteId}: Found clickable element: ${selector}`);
+            await element.click();
+            await page.waitForTimeout(3000); // Wait for popup/modal to appear
+            break;
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+    } else if (site.url.includes('pocket-concierge.jp')) {
+      log('debug', `${siteId}: Attempting Pocket Concierge-specific interactions`);
+      
+      // Look for reservation buttons or links
+      const reservationSelectors = [
+        'a[href*="reserve"]',
+        'button:has-text("Reserve")',
+        'button:has-text("予約")',
+        '.reservation-button',
+        '.book-now',
+        '[data-action="reserve"]'
+      ];
+      
+      for (const selector of reservationSelectors) {
+        try {
+          const element = page.locator(selector).first();
+          if (await element.isVisible({ timeout: 2000 })) {
+            log('info', `${siteId}: Found reservation element: ${selector}`);
+            await element.click();
+            await page.waitForTimeout(4000); // Wait longer for popup
+            break;
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+    } else if (site.url.includes('resy.com')) {
+      log('debug', `${siteId}: Attempting Resy-specific interactions`);
+      
+      const resySelectors = [
+        '[data-test-id="book-button"]',
+        'button:has-text("Reserve")',
+        '.ReservationButton',
+        '.book-reservation'
+      ];
+      
+      for (const selector of resySelectors) {
+        try {
+          const element = page.locator(selector).first();
+          if (await element.isVisible({ timeout: 2000 })) {
+            log('info', `${siteId}: Found Resy reservation element: ${selector}`);
+            await element.click();
+            await page.waitForTimeout(3000);
+            break;
+          }
+        } catch (err) {
+          // Continue to next selector
+        }
+      }
+    }
+    
+    // Generic fallback for any site
+    const genericSelectors = [
+      'a[href*="book"]',
+      'a[href*="reserve"]',
+      'button:has-text("Book")',
+      'button:has-text("Reserve")',
+      'button:has-text("Available")',
+      '.book',
+      '.reserve',
+      '.available'
+    ];
+    
+    for (const selector of genericSelectors) {
+      try {
+        const element = page.locator(selector).first();
+        if (await element.isVisible({ timeout: 1000 })) {
+          log('info', `${siteId}: Found generic reservation element: ${selector}`);
+          await element.click();
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch (err) {
+        // Continue to next selector
+      }
+    }
+    
+  } catch (error) {
+    log('debug', `${siteId}: Error during reservation interaction`, { error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+async function capturePopupContent(page: Page, site: SiteConfig): Promise<string> {
+  const siteId = site.id;
+  let popupContent = '';
+  
+  try {
+    // Common popup/modal selectors
+    const popupSelectors = [
+      '[role="dialog"]',
+      '[role="modal"]',
+      '.modal',
+      '.popup',
+      '.overlay',
+      '.dialog',
+      '[data-testid="modal"]',
+      '[data-testid="popup"]',
+      '.reservation-modal',
+      '.booking-popup',
+      '.availability-modal'
+    ];
+    
+    for (const selector of popupSelectors) {
+      try {
+        const popup = page.locator(selector);
+        if (await popup.isVisible({ timeout: 1000 })) {
+          const content = await popup.innerText();
+          if (content && content.trim().length > 20) { // Only capture meaningful content
+            popupContent += content + '\n\n';
+            log('info', `${siteId}: Captured popup content from ${selector} (${content.length} chars)`);
+          }
+        }
+      } catch (err) {
+        // Continue to next selector
+      }
+    }
+    
+    // Site-specific popup selectors
+    if (site.url.includes('exploretock.com')) {
+      const tockPopupSelectors = [
+        '[data-testid="reservation-modal"]',
+        '.tock-modal',
+        '.booking-flow-modal',
+        '.time-selection-modal'
+      ];
+      
+      for (const selector of tockPopupSelectors) {
+        try {
+          const popup = page.locator(selector);
+          if (await popup.isVisible({ timeout: 1000 })) {
+            const content = await popup.innerText();
+            if (content && content.trim().length > 20) {
+              popupContent += content + '\n\n';
+              log('info', `${siteId}: Captured Tock-specific popup from ${selector}`);
+            }
+          }
+        } catch (err) {
+          // Continue
+        }
+      }
+    }
+    
+    if (site.url.includes('pocket-concierge.jp')) {
+      const pcPopupSelectors = [
+        '.reservation-popup',
+        '.booking-modal',
+        '[class*="modal"]',
+        '[class*="popup"]'
+      ];
+      
+      for (const selector of pcPopupSelectors) {
+        try {
+          const popup = page.locator(selector);
+          if (await popup.isVisible({ timeout: 1000 })) {
+            const content = await popup.innerText();
+            if (content && content.trim().length > 20) {
+              popupContent += content + '\n\n';
+              log('info', `${siteId}: Captured Pocket Concierge popup from ${selector}`);
+            }
+          }
+        } catch (err) {
+          // Continue
+        }
+      }
+    }
+    
+  } catch (error) {
+    log('debug', `${siteId}: Error capturing popup content`, { error: error instanceof Error ? error.message : String(error) });
+  }
+  
+  return popupContent.trim();
+}
+
+async function scrapeWithRetry(site: SiteConfig, attempt: number = 1, extraWaitMs?: number): Promise<string> {
   const maxAttempts = 2;
   const context = await newContext(site.headless);
   
@@ -11,7 +217,9 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1): Promise<s
     const page = await context.newPage();
     
     // Smart timeout and wait strategy based on site
-    const isHeavyJSSite = site.url.includes('exploretock.com') || site.url.includes('resy.com') || site.url.includes('opentable.com');
+    const isHeavyJSSite = site.url.includes('exploretock.com') || site.url.includes('resy.com') || site.url.includes('opentable.com') || site.url.includes('pocket-concierge.jp');
+    const isTockSite = site.url.includes('exploretock.com');
+    const isPocketConciergeSite = site.url.includes('pocket-concierge.jp');
     const waitCondition = isHeavyJSSite ? 'domcontentloaded' : (site.wait_until || 'networkidle');
     
     // Use configurable timeout, but shorter for heavy JS sites
@@ -27,13 +235,20 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1): Promise<s
       timeout 
     });
 
-    // Wait for dynamic content - longer for heavy JS sites
-    const waitTime = isHeavyJSSite ? 5000 : 2000;
-    log('debug', `Waiting ${waitTime/1000}s for dynamic content to load`, { siteId: site.id });
-    await page.waitForTimeout(waitTime);
+    // Wait for dynamic content - much longer for heavy JS sites to allow popups and interactions
+    const baseWaitTime = isHeavyJSSite ? 10000 : 3000;
+    const totalWaitTime = baseWaitTime + (extraWaitMs || 0);
+    log('debug', `Waiting ${totalWaitTime/1000}s for dynamic content to load`, { siteId: site.id });
+    await page.waitForTimeout(totalWaitTime);
+
+    // Try to interact with reservation elements to trigger popups
+    await tryInteractWithReservationElements(page, site);
 
     let text = '';
     const selector = site.selector || 'main';
+    
+    // First, capture any popup/modal content that might have appeared
+    const popupText = await capturePopupContent(page, site);
     
     log('debug', `Checking if selector exists: ${selector}`, { siteId: site.id });
     const hasSelector = await page.locator(selector).first().isVisible().catch(() => false);
@@ -69,6 +284,12 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1): Promise<s
         preview: text.slice(0, 200) + '...' 
       });
     }
+    
+    // Combine main content with popup content
+    if (popupText) {
+      text = text + '\n\n--- POPUP/MODAL CONTENT ---\n' + popupText;
+      log('info', `${site.id}: Added ${popupText.length} chars from popup content`);
+    }
 
     // Apply scrub patterns before normalization
     const scrubbedText = applyScrubPatterns(text, site.scrub_patterns);
@@ -93,7 +314,7 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1): Promise<s
       log('info', `Retrying ${site.id} with fallback strategy...`);
       await context.close();
       await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay before retry
-      return scrapeWithRetry(site, attempt + 1);
+      return scrapeWithRetry(site, attempt + 1, extraWaitMs);
     }
     
     throw error;
@@ -103,8 +324,8 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1): Promise<s
   }
 }
 
-export async function scrapeSite(site: SiteConfig): Promise<string> {
+export async function scrapeSite(site: SiteConfig, extraWaitMs?: number): Promise<string> {
   log('info', `🌐 ${site.id}: Starting scrape (${site.selector || 'main'})`);
   
-  return scrapeWithRetry(site);
+  return scrapeWithRetry(site, 1, extraWaitMs);
 }
