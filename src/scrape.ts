@@ -138,10 +138,13 @@ async function capturePopupContent(page: Page, site: SiteConfig): Promise<string
       '.availability-modal'
     ];
     
+    // Wait a bit for popups to fully render
+    await page.waitForTimeout(2000);
+    
     for (const selector of popupSelectors) {
       try {
         const popup = page.locator(selector);
-        if (await popup.isVisible({ timeout: 1000 })) {
+        if (await popup.isVisible({ timeout: 3000 })) {
           const content = await popup.innerText();
           if (content && content.trim().length > 20) { // Only capture meaningful content
             popupContent += content + '\n\n';
@@ -159,7 +162,15 @@ async function capturePopupContent(page: Page, site: SiteConfig): Promise<string
         '[data-testid="reservation-modal"]',
         '.tock-modal',
         '.booking-flow-modal',
-        '.time-selection-modal'
+        '.time-selection-modal',
+        // Additional Tock-specific selectors for automatic popups
+        '[class*="modal"]',
+        '[class*="popup"]',
+        '[class*="overlay"]',
+        '[id*="modal"]',
+        '[id*="popup"]',
+        'div[style*="position: fixed"]', // Common for overlay modals
+        'div[style*="z-index"]' // High z-index elements are often popups
       ];
       
       for (const selector of tockPopupSelectors) {
@@ -241,12 +252,32 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1, extraWaitM
     log('debug', `Waiting ${totalWaitTime/1000}s for dynamic content to load`, { siteId: site.id });
     await page.waitForTimeout(totalWaitTime);
 
-    // Try to interact with reservation elements for Tock sites to capture "no availability" popups
+    // Wait for automatic popups on Tock sites (they appear after ~10 seconds automatically)
     let popupText = '';
     if (isTockSite) {
-      log('debug', `${site.id}: Tock site detected, attempting to trigger reservation popup`);
-      await tryInteractWithReservationElements(page, site);
+      log('debug', `${site.id}: Tock site detected, waiting for automatic popup to appear`);
+      
+      // Capture initial page state
+      const initialBodyText = await page.locator('body').innerText().catch(() => '');
+      
+      // Tock sites automatically show popups after ~10 seconds, so wait a bit longer
+      await page.waitForTimeout(12000); // Wait 12 seconds for automatic popup
+      
+      // Try to capture popup content using selectors
       popupText = await capturePopupContent(page, site);
+      
+      // Fallback: if no popup content found via selectors, check for new content on page
+      if (!popupText || popupText.trim().length < 50) {
+        const finalBodyText = await page.locator('body').innerText().catch(() => '');
+        if (finalBodyText.length > initialBodyText.length + 100) {
+          // Significant new content appeared, likely a popup
+          const newContent = finalBodyText.slice(initialBodyText.length);
+          if (newContent.toLowerCase().includes('reservat') || newContent.toLowerCase().includes('availab')) {
+            popupText = newContent;
+            log('info', `${site.id}: Captured new content that appeared (likely popup): ${newContent.length} chars`);
+          }
+        }
+      }
     }
 
     let text = '';
