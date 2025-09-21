@@ -235,20 +235,22 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1, extraWaitM
       timeout 
     });
 
-    // Wait for dynamic content - much longer for heavy JS sites to allow popups and interactions
-    const baseWaitTime = isHeavyJSSite ? 10000 : 3000;
+    // Wait for dynamic content - reduced since we're not doing interactions
+    const baseWaitTime = isHeavyJSSite ? 5000 : 3000;
     const totalWaitTime = baseWaitTime + (extraWaitMs || 0);
     log('debug', `Waiting ${totalWaitTime/1000}s for dynamic content to load`, { siteId: site.id });
     await page.waitForTimeout(totalWaitTime);
 
-    // Try to interact with reservation elements to trigger popups
-    await tryInteractWithReservationElements(page, site);
+    // Try to interact with reservation elements for Tock sites to capture "no availability" popups
+    let popupText = '';
+    if (isTockSite) {
+      log('debug', `${site.id}: Tock site detected, attempting to trigger reservation popup`);
+      await tryInteractWithReservationElements(page, site);
+      popupText = await capturePopupContent(page, site);
+    }
 
     let text = '';
     const selector = site.selector || 'main';
-    
-    // First, capture any popup/modal content that might have appeared
-    const popupText = await capturePopupContent(page, site);
     
     log('debug', `Checking if selector exists: ${selector}`, { siteId: site.id });
     const hasSelector = await page.locator(selector).first().isVisible().catch(() => false);
@@ -285,7 +287,7 @@ async function scrapeWithRetry(site: SiteConfig, attempt: number = 1, extraWaitM
       });
     }
     
-    // Combine main content with popup content
+    // Combine main content with popup content (for Tock sites)
     if (popupText) {
       text = text + '\n\n--- POPUP/MODAL CONTENT ---\n' + popupText;
       log('info', `${site.id}: Added ${popupText.length} chars from popup content`);

@@ -54,6 +54,13 @@ export type GlobalConfig = {
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   DATA_DIR: string;
   SEND_BASELINE_NOTICE: boolean;
+  
+  // XVFB settings
+  XVFB_ENABLED: boolean;
+  XVFB_DISPLAY: string;
+  XVFB_WIDTH: number;
+  XVFB_HEIGHT: number;
+  XVFB_DEPTH: number;
 };
 
 function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
@@ -83,7 +90,7 @@ export function loadGlobalConfig(): GlobalConfig {
     // New settings
     GLOBAL_CHECK_MIN: parseNumber(process.env.GLOBAL_CHECK_MIN, 4),
     GLOBAL_CHECK_MAX: parseNumber(process.env.GLOBAL_CHECK_MAX, 6),
-    MAX_CONCURRENCY: parseNumber(process.env.MAX_CONCURRENCY, 1),
+    MAX_CONCURRENCY: parseNumber(process.env.MAX_CONCURRENCY, 3),
     STAGGER_STARTUP_MINUTES: parseNumber(process.env.STAGGER_STARTUP_MINUTES, 3),
     SCRAPE_TIMEOUT_SECONDS: parseNumber(process.env.SCRAPE_TIMEOUT_SECONDS, 90),
     WAIT_UNTIL: (process.env.WAIT_UNTIL as any) || 'networkidle',
@@ -92,6 +99,13 @@ export function loadGlobalConfig(): GlobalConfig {
     LOG_LEVEL: (process.env.LOG_LEVEL as any) || 'info',
     DATA_DIR: process.env.DATA_DIR || '.data',
     SEND_BASELINE_NOTICE: parseBoolean(process.env.SEND_BASELINE_NOTICE, true),
+    
+    // XVFB settings
+    XVFB_ENABLED: parseBoolean(process.env.XVFB_ENABLED, false),
+    XVFB_DISPLAY: process.env.XVFB_DISPLAY || ':99',
+    XVFB_WIDTH: parseNumber(process.env.XVFB_WIDTH, 1920),
+    XVFB_HEIGHT: parseNumber(process.env.XVFB_HEIGHT, 1080),
+    XVFB_DEPTH: parseNumber(process.env.XVFB_DEPTH, 24),
   };
 
   // Validation

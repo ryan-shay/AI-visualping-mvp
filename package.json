@@ -6,7 +6,10 @@
     "dev": "npx tsx src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
     "build": "tsc",
-    "playwright:install": "npx playwright install --with-deps"
+    "playwright:install": "npx playwright install --with-deps",
+    "install:xvfb": "./install-xvfb.sh",
+    "test:browser": "npm run build && node test-headless.js",
+    "test:xvfb": "npm run build && node test-headless.js"
   },
   "dependencies": {
     "@playwright/test": "^1.48.2",

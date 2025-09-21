@@ -1,6 +1,7 @@
 import { chromium, Browser, BrowserContext } from '@playwright/test';
 import { log } from './logger.js';
 import { loadGlobalConfig } from './config.js';
+import { ensureXvfbForHeadfull, stopGlobalXvfb } from './xvfb.js';
 
 let sharedBrowser: Browser | null = null;
 let currentHeadlessMode: boolean | null = null;
@@ -20,6 +21,9 @@ export async function getSharedBrowser(headless?: boolean): Promise<Browser> {
   }
 
   if (!sharedBrowser) {
+    // Ensure Xvfb is running if we need headfull mode in a headless environment
+    await ensureXvfbForHeadfull(headless);
+    
     log('info', `Launching shared Chromium browser (headless: ${headless})`);
     sharedBrowser = await chromium.launch({ 
       headless: headless,
@@ -51,17 +55,20 @@ export async function closeSharedBrowser(): Promise<void> {
     await sharedBrowser.close();
     sharedBrowser = null;
   }
+  
+  // Also stop Xvfb if it was started
+  await stopGlobalXvfb();
 }
 
 // Graceful shutdown handler
 process.on('SIGTERM', async () => {
-  log('info', 'Received SIGTERM, closing browser');
+  log('info', 'Received SIGTERM, closing browser and Xvfb');
   await closeSharedBrowser();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
-  log('info', 'Received SIGINT, closing browser');
+  log('info', 'Received SIGINT, closing browser and Xvfb');
   await closeSharedBrowser();
   process.exit(0);
 });
