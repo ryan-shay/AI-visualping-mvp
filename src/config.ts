@@ -1,6 +1,4 @@
 import 'dotenv/config';
-import { readFile, access, constants } from 'node:fs/promises';
-import YAML from 'yaml';
 
 export type ScrubPattern = {
   pattern: string;
@@ -24,10 +22,7 @@ export type SiteConfig = {
   scrub_patterns?: ScrubPattern[];
 };
 
-export type SitesConfig = {
-  defaults?: Partial<SiteConfig>;
-  sites: SiteConfig[];
-};
+// Removed complex SitesConfig - using simple array now
 
 export type GlobalConfig = {
   // Required
@@ -119,7 +114,7 @@ export function loadGlobalConfig(): GlobalConfig {
   return config;
 }
 
-function createSimpleSiteFromUrl(url: string, index: number, globalConfig: GlobalConfig): SiteConfig {
+function createSiteFromUrl(url: string, index: number, globalConfig: GlobalConfig): SiteConfig {
   // Extract a simple ID from the URL
   let siteId: string;
   try {
@@ -137,18 +132,18 @@ function createSimpleSiteFromUrl(url: string, index: number, globalConfig: Globa
     check_min: globalConfig.GLOBAL_CHECK_MIN,
     check_max: globalConfig.GLOBAL_CHECK_MAX,
     wait_until: globalConfig.WAIT_UNTIL,
-    headless: globalConfig.PLAYWRIGHT_HEADLESS || globalConfig.HEADLESS,
-    relevance_mode: 'strict', // Simple mode defaults to loose
+    headless: globalConfig.PLAYWRIGHT_HEADLESS,
+    relevance_mode: 'strict',
     goal_keywords: ['available', 'availability', 'open', 'book', 'reserve', 'slots', 'seats', 'tables'],
     goal_negative_hints: ['sold out', 'fully booked', 'waitlist', 'notify'],
-    watch_goal: 'Monitor for any meaningful changes'
+    watch_goal: 'Monitor for reservation availability changes'
   };
 }
 
-export async function loadSitesConfig(): Promise<SitesConfig> {
+export function loadSitesConfig(): SiteConfig[] {
   const globalConfig = loadGlobalConfig();
   
-  // Priority 1: Check for simple WATCH_URLS (easiest approach)
+  // Primary approach: WATCH_URLS (comma-separated URLs)
   if (globalConfig.WATCH_URLS) {
     const urls = globalConfig.WATCH_URLS
       .split(',')
@@ -156,90 +151,26 @@ export async function loadSitesConfig(): Promise<SitesConfig> {
       .filter(url => url.length > 0);
     
     if (urls.length > 0) {
-      const sites = urls.map((url, index) => createSimpleSiteFromUrl(url, index, globalConfig));
-      return { sites };
+      return urls.map((url, index) => createSiteFromUrl(url, index, globalConfig));
     }
   }
   
-  // Priority 2: Try to load sites.yaml or sites.json
-  let sitesConfig: SitesConfig | null = null;
-  
-  try {
-    await access('sites.yaml', constants.F_OK);
-    const yamlContent = await readFile('sites.yaml', 'utf8');
-    sitesConfig = YAML.parse(yamlContent);
-  } catch {
-    try {
-      await access('sites.json', constants.F_OK);
-      const jsonContent = await readFile('sites.json', 'utf8');
-      sitesConfig = JSON.parse(jsonContent);
-    } catch {
-      // Priority 3: Fall back to legacy single-site mode
-      if (globalConfig.TARGET_URL) {
-        sitesConfig = {
-          sites: [{
-            id: 'legacy-site',
-            url: globalConfig.TARGET_URL,
-            selector: globalConfig.CSS_SELECTOR || 'main',
-            check_min: Math.floor((globalConfig.CHECK_INTERVAL_MINUTES || 240) / 60) || globalConfig.GLOBAL_CHECK_MIN,
-            check_max: Math.ceil((globalConfig.CHECK_INTERVAL_MINUTES || 240) / 60) || globalConfig.GLOBAL_CHECK_MAX,
-            wait_until: globalConfig.WAIT_UNTIL,
-            headless: globalConfig.PLAYWRIGHT_HEADLESS || globalConfig.HEADLESS,
-            relevance_mode: 'loose' // Default to loose for legacy mode
-          }]
-        };
-      } else {
-        throw new Error('No WATCH_URLS, sites.yaml, sites.json, or TARGET_URL found. Please provide site configuration.');
-      }
-    }
-  }
-
-  if (!sitesConfig || !sitesConfig.sites || sitesConfig.sites.length === 0) {
-    throw new Error('No sites configured. Please add at least one site to sites.yaml or sites.json');
-  }
-
-  // Apply defaults inheritance
-  const processedSites: SiteConfig[] = sitesConfig.sites.map(site => {
-    const merged: SiteConfig = {
-      // Global defaults
-      check_min: globalConfig.GLOBAL_CHECK_MIN,
-      check_max: globalConfig.GLOBAL_CHECK_MAX,
+  // Fallback: Legacy single-site mode
+  if (globalConfig.TARGET_URL) {
+    return [{
+      id: 'legacy-site',
+      url: globalConfig.TARGET_URL,
+      selector: globalConfig.CSS_SELECTOR || 'main',
+      check_min: Math.floor((globalConfig.CHECK_INTERVAL_MINUTES || 240) / 60) || globalConfig.GLOBAL_CHECK_MIN,
+      check_max: Math.ceil((globalConfig.CHECK_INTERVAL_MINUTES || 240) / 60) || globalConfig.GLOBAL_CHECK_MAX,
       wait_until: globalConfig.WAIT_UNTIL,
-      headless: globalConfig.PLAYWRIGHT_HEADLESS || globalConfig.HEADLESS,
-      selector: 'main',
-      relevance_mode: 'strict',
+      headless: globalConfig.PLAYWRIGHT_HEADLESS,
+      relevance_mode: 'loose', // Legacy mode defaults to loose
       goal_keywords: ['available', 'availability', 'open', 'book', 'reserve', 'slots', 'seats', 'tables'],
       goal_negative_hints: ['sold out', 'fully booked', 'waitlist', 'notify'],
-      
-      // Apply config defaults
-      ...sitesConfig.defaults,
-      
-      // Apply site-specific config
-      ...site
-    };
-
-    // Validation
-    if (!merged.id) {
-      throw new Error(`Site missing required 'id' field: ${JSON.stringify(site)}`);
-    }
-    if (!merged.url) {
-      throw new Error(`Site '${merged.id}' missing required 'url' field`);
-    }
-
-    return merged;
-  });
-
-  // Check for duplicate IDs
-  const ids = new Set<string>();
-  for (const site of processedSites) {
-    if (ids.has(site.id)) {
-      throw new Error(`Duplicate site ID found: '${site.id}'`);
-    }
-    ids.add(site.id);
+      watch_goal: 'Monitor for changes'
+    }];
   }
-
-  return {
-    defaults: sitesConfig.defaults,
-    sites: processedSites
-  };
+  
+  throw new Error('No WATCH_URLS or TARGET_URL found. Please provide site configuration in .env file.');
 }

@@ -11,9 +11,9 @@ async function main(): Promise<void> {
     
     // Load configuration
     const globalConfig = loadGlobalConfig();
-    const sitesConfig = await loadSitesConfig();
+    const sites = loadSitesConfig();
     
-    log('info', `📋 Configuration loaded: ${sitesConfig.sites.length} sites, concurrency=${globalConfig.MAX_CONCURRENCY}, log=${globalConfig.LOG_LEVEL}`);
+    log('info', `📋 Configuration loaded: ${sites.length} sites, concurrency=${globalConfig.MAX_CONCURRENCY}, log=${globalConfig.LOG_LEVEL}`);
     
     // Ensure data directory exists
     await ensureDataDir();
@@ -22,7 +22,7 @@ async function main(): Promise<void> {
     const scheduler = new SiteScheduler();
     
     // Add all sites to scheduler
-    for (const site of sitesConfig.sites) {
+    for (const site of sites) {
       scheduler.addSite(site);
       log('info', `📍 ${site.id}: Added (${site.check_min}-${site.check_max}min, ${site.relevance_mode} mode)`);
     }

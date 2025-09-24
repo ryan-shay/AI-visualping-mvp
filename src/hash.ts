@@ -28,3 +28,28 @@ export function applyScrubPatterns(text: string, patterns?: Array<{pattern: stri
 
   return scrubbedText;
 }
+
+/**
+ * Combined text processing: apply scrub patterns then normalize
+ * This reduces redundant string operations
+ */
+export function processText(text: string, scrubPatterns?: Array<{pattern: string, flags?: string}>): string {
+  // Apply scrub patterns first
+  let processedText = text;
+  if (scrubPatterns && scrubPatterns.length > 0) {
+    for (const { pattern, flags } of scrubPatterns) {
+      try {
+        const regex = new RegExp(pattern, flags || '');
+        processedText = processedText.replace(regex, '');
+      } catch (err) {
+        console.warn(`Invalid scrub pattern: ${pattern} with flags: ${flags}`, err);
+      }
+    }
+  }
+  
+  // Then normalize
+  return processedText
+    .replace(/\s+/g, ' ')
+    .replace(/\u200B/g, '') // Remove zero-width spaces
+    .trim();
+}

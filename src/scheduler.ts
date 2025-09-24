@@ -4,11 +4,8 @@ import { log } from './logger.js';
 import { scrapeSite } from './scrape.js';
 import { sha256 } from './hash.js';
 import { readBaseline, writeBaseline } from './baseline.js';
-import { checkHeuristic, classifyRelevance } from './relevance.js';
-import { summarizeGoalAware } from './summarize.js';
+import { checkHeuristic, analyzeChangeRelevanceAndSummary } from './relevance.js';
 import { postToDiscord, shouldThrottleError } from './notify.js';
-
-// Removed unused types - we now use simple sequential processing
 
 export class SiteScheduler {
   private sites: SiteConfig[] = [];
@@ -17,7 +14,7 @@ export class SiteScheduler {
   private cycleStartTime = 0;
 
   constructor() {
-    // No need for concurrency settings - we're going sequential
+    // Sequential processing - no concurrency settings needed
   }
 
   /**
@@ -73,10 +70,8 @@ export class SiteScheduler {
         return;
       }
 
-    log('info', `🔍 ${siteId}: Comparing hashes (current: ${currentHash.slice(0,8)}..., baseline: ${baseline.hash.slice(0,8)}...)`);
-
       if (baseline.hash === currentHash) {
-        log('info', `✅ No changes detected for ${siteId}`);
+        log('debug', `✅ No changes detected for ${siteId}`);
         return;
       }
 
@@ -84,29 +79,34 @@ export class SiteScheduler {
       log('info', `🚨 Change detected for ${siteId}! Processing relevance`);
 
       const heuristicResult = checkHeuristic(currentText, site);
-      log('info', `Heuristic check for ${siteId}`, heuristicResult);
+      log('debug', `Heuristic check for ${siteId}`, heuristicResult);
 
       let shouldNotify = false;
+      let summary = '';
       let relevanceReason = '';
 
       if (site.relevance_mode === 'strict') {
         if (heuristicResult.hit) {
-          // Run GPT classifier
-          const relevanceResult = await classifyRelevance(baseline.text, currentText, site);
-          shouldNotify = relevanceResult.relevant;
-          relevanceReason = relevanceResult.reason;
+          // Run combined GPT analysis (relevance + summary in one call)
+          const analysisResult = await analyzeChangeRelevanceAndSummary(baseline.text, currentText, site);
+          shouldNotify = analysisResult.relevant;
+          relevanceReason = analysisResult.reason;
+          summary = analysisResult.summary;
           
-          log('info', `GPT relevance check for ${siteId}`, {
-            relevant: relevanceResult.relevant,
-            reason: relevanceResult.reason
+          log('debug', `Combined GPT analysis for ${siteId}`, {
+            relevant: analysisResult.relevant,
+            reason: analysisResult.reason
           });
         } else {
-          log('info', `Heuristic failed for ${siteId}, skipping GPT and notification`);
+          log('debug', `Heuristic failed for ${siteId}, skipping GPT and notification`);
         }
       } else {
         // Loose mode - always notify but include heuristic info
         shouldNotify = true;
-        log('info', `Loose mode for ${siteId}, will notify regardless of relevance`);
+        // For loose mode, generate summary separately (could be optimized further)
+        const analysisResult = await analyzeChangeRelevanceAndSummary(baseline.text, currentText, site);
+        summary = analysisResult.summary;
+        log('debug', `Loose mode for ${siteId}, will notify regardless of relevance`);
       }
 
       // Update baseline regardless of notification decision
@@ -117,9 +117,6 @@ export class SiteScheduler {
       });
 
       if (shouldNotify) {
-        // Generate summary
-        const summary = await summarizeGoalAware(baseline.text, currentText, site);
-        
         // Send notification
         if (site.relevance_mode === 'strict') {
           await postToDiscord(site, 'relevant', {

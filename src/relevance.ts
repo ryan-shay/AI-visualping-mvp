@@ -21,6 +21,12 @@ export type RelevanceResult = {
   reason: string;
 };
 
+export type CombinedAnalysisResult = {
+  relevant: boolean;
+  reason: string;
+  summary: string;
+};
+
 export function checkHeuristic(text: string, site: SiteConfig): HeuristicResult {
   const lowerText = text.toLowerCase();
   
@@ -154,6 +160,89 @@ Analyze the differences and determine relevance to the goal.`;
     return {
       relevant: true,
       reason: `Classification error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
+/**
+ * Combined GPT function that does both relevance checking and summarization in a single call
+ * This reduces API costs by 50% compared to separate calls
+ */
+export async function analyzeChangeRelevanceAndSummary(
+  oldText: string, 
+  newText: string, 
+  site: SiteConfig
+): Promise<CombinedAnalysisResult> {
+  if (!openai) {
+    const config = loadGlobalConfig();
+    openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
+  }
+  
+  log('info', `🤖 ${site.id}: Running combined GPT analysis (relevance + summary)`);
+  
+  const systemPrompt = `You are a restaurant reservation monitoring assistant. Analyze changes between two webpage versions and provide both relevance assessment and summary.
+
+Return ONLY valid JSON in this exact format:
+{"relevant": boolean, "reason": "brief relevance explanation", "summary": "3-6 bullet points of key changes"}
+
+RELEVANCE CRITERIA - Be extremely strict:
+- TRUE only for: New time slots, "Book now" buttons becoming active, availability opening up
+- FALSE for: General info, "No reservations available" messages, waitlists, static content, UI changes
+
+SUMMARY CRITERIA:
+- Focus on availability, timeslots, prices, deposits, booking status
+- Use bullet points (•)
+- Include specific numbers/times if visible
+- If no meaningful change, say "No material change"`;
+
+  const userPrompt = `Target URL: ${site.url}
+Watching Goal: ${site.watch_goal || 'Monitor for changes'}
+Date of Interest: ${site.goal_date || 'Not specified'}
+Party Size: ${site.goal_party_size || 'Not specified'}
+
+Old version (truncated to 6k chars):
+${oldText.slice(0, 6000)}
+
+New version (truncated to 6k chars):
+${newText.slice(0, 6000)}
+
+Analyze relevance and provide summary focusing on the goal date and party size.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      temperature: 0.1,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+    });
+
+    const content = response.choices[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error('Empty response from GPT');
+    }
+
+    const result: CombinedAnalysisResult = JSON.parse(content);
+    
+    // Validate the response structure
+    if (typeof result.relevant !== 'boolean' || 
+        typeof result.reason !== 'string' || 
+        typeof result.summary !== 'string') {
+      throw new Error('Invalid response format from GPT');
+    }
+
+    log('info', `🎯 ${site.id}: Combined analysis → ${result.relevant ? '✅ RELEVANT' : '❌ NOT RELEVANT'} (${result.reason})`);
+
+    return result;
+  } catch (error) {
+    log('error', `Error in combined GPT analysis for site: ${site.id}`, { error });
+    
+    // Fallback
+    return {
+      relevant: true,
+      reason: `Analysis error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      summary: 'Change detected but analysis failed. Manual review recommended.'
     };
   }
 }

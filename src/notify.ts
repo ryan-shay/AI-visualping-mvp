@@ -125,9 +125,22 @@ export async function postToDiscord(
   }
 }
 
-// Error throttling to prevent Discord spam
+// Error throttling to prevent Discord spam with automatic cleanup
 const errorThrottleMap = new Map<string, number>();
 const THROTTLE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+// Periodic cleanup to prevent memory leaks
+setInterval(() => {
+  const now = Date.now();
+  const cutoff = now - THROTTLE_INTERVAL_MS;
+  
+  for (const [siteId, timestamp] of errorThrottleMap.entries()) {
+    if (timestamp < cutoff) {
+      errorThrottleMap.delete(siteId);
+    }
+  }
+}, CLEANUP_INTERVAL_MS);
 
 export function shouldThrottleError(siteId: string): boolean {
   const now = Date.now();
