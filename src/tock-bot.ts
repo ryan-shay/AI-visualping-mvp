@@ -16,7 +16,7 @@ export class TockReservationBot {
     const page = await context.newPage();
     
     // Set a larger viewport to ensure we can see all elements
-    await page.setViewportSize({ width: 1920, height: 1080 });
+    await page.setViewport({ width: 1920, height: 1080 });
     
     let cycleCount = 0;
     
@@ -34,7 +34,7 @@ export class TockReservationBot {
         });
 
         // Wait for the page to load completely
-        await page.waitForTimeout(5000);
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Wait for the search modal to appear
         log('info', '⏳ Waiting for reservation popup to load...');
@@ -53,15 +53,15 @@ export class TockReservationBot {
             await page.waitForSelector('button[data-testid="booking-card-button"]', { timeout: 30000 });
             
             // Get all booking buttons
-            const bookingButtons = page.locator('button[data-testid="booking-card-button"]');
-            const buttonCount = await bookingButtons.count();
+            const bookingButtons = await page.$$('button[data-testid="booking-card-button"]');
+            const buttonCount = bookingButtons.length;
             log('info', `📋 Found ${buttonCount} booking buttons`);
             
             // Check each button to find one that says "Book"
             for (let i = 0; i < buttonCount; i++) {
-              const button = bookingButtons.nth(i);
+              const button = bookingButtons[i];
               
-              const buttonText = await button.locator('span[role="presentation"]').textContent();
+              const buttonText = await button.$eval('span[role="presentation"]', (el: Element) => el.textContent);
               log('info', `🔍 Button ${i + 1} text: "${buttonText}"`);
               
               if (buttonText?.trim() === 'Book') {
@@ -70,7 +70,7 @@ export class TockReservationBot {
                 log('info', '🎉 Successfully clicked the Book button!');
                 
                 // Wait a moment to see the redirect
-                await page.waitForTimeout(5000);
+                await new Promise(resolve => setTimeout(resolve, 5000));
                 log('info', `📍 Current URL after click: ${page.url()}`);
                 
                 foundBookButton = true;
@@ -88,11 +88,11 @@ export class TockReservationBot {
             log('info', `🔄 Button not found or not stable, refreshing page in 30 seconds (attempt ${refreshCount})...`);
             
             // Wait 30 seconds before refreshing
-            await page.waitForTimeout(30000);
+            await new Promise(resolve => setTimeout(resolve, 30000));
             
             // Refresh the page and try again
             await page.reload({ waitUntil: 'domcontentloaded' });
-            await page.waitForTimeout(3000);
+            await new Promise(resolve => setTimeout(resolve, 3000));
             
             // Wait for the search modal to appear again
             await page.waitForSelector('.SearchModal-body', { timeout: 45000 });
@@ -108,7 +108,7 @@ export class TockReservationBot {
       
       // Wait exactly 10 minutes before next cycle
       log('info', '⏰ Waiting 10 minutes before next cycle...');
-      await page.waitForTimeout(10 * 60 * 1000); // 10 minutes in milliseconds
+      await new Promise(resolve => setTimeout(resolve, 10 * 60 * 1000)); // 10 minutes in milliseconds
     }
   }
 }

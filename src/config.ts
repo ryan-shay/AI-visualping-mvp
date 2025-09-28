@@ -11,7 +11,7 @@ export type SiteConfig = {
   selector?: string;
   check_min?: number;
   check_max?: number;
-  wait_until?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
+  wait_until?: 'load' | 'domcontentloaded' | 'networkidle' | 'networkidle0' | 'networkidle2' | 'commit';
   headless?: boolean;
   watch_goal?: string;
   goal_date?: string;
@@ -43,8 +43,8 @@ export type GlobalConfig = {
   MAX_CONCURRENCY: number;
   STAGGER_STARTUP_MINUTES: number;
   SCRAPE_TIMEOUT_SECONDS: number;
-  WAIT_UNTIL: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
-  PLAYWRIGHT_HEADLESS: boolean;
+  WAIT_UNTIL: 'load' | 'domcontentloaded' | 'networkidle' | 'networkidle0' | 'networkidle2' | 'commit';
+  PUPPETEER_HEADLESS: boolean;
   HEADLESS: boolean; // Legacy support
   LOG_LEVEL: 'debug' | 'info' | 'warn' | 'error';
   DATA_DIR: string;
@@ -56,6 +56,10 @@ export type GlobalConfig = {
   XVFB_WIDTH: number;
   XVFB_HEIGHT: number;
   XVFB_DEPTH: number;
+  
+  // Booking settings
+  BOOK_URL?: string;
+  BOOK_TIME?: string;
 };
 
 function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
@@ -88,8 +92,8 @@ export function loadGlobalConfig(): GlobalConfig {
     MAX_CONCURRENCY: parseNumber(process.env.MAX_CONCURRENCY, 3),
     STAGGER_STARTUP_MINUTES: parseNumber(process.env.STAGGER_STARTUP_MINUTES, 3),
     SCRAPE_TIMEOUT_SECONDS: parseNumber(process.env.SCRAPE_TIMEOUT_SECONDS, 90),
-    WAIT_UNTIL: (process.env.WAIT_UNTIL as any) || 'networkidle',
-    PLAYWRIGHT_HEADLESS: parseBoolean(process.env.PLAYWRIGHT_HEADLESS, true),
+    WAIT_UNTIL: (process.env.WAIT_UNTIL as any) || 'networkidle0',
+    PUPPETEER_HEADLESS: parseBoolean(process.env.PUPPETEER_HEADLESS || process.env.PLAYWRIGHT_HEADLESS, true),
     HEADLESS: parseBoolean(process.env.HEADLESS, true),
     LOG_LEVEL: (process.env.LOG_LEVEL as any) || 'info',
     DATA_DIR: process.env.DATA_DIR || '.data',
@@ -101,6 +105,10 @@ export function loadGlobalConfig(): GlobalConfig {
     XVFB_WIDTH: parseNumber(process.env.XVFB_WIDTH, 1920),
     XVFB_HEIGHT: parseNumber(process.env.XVFB_HEIGHT, 1080),
     XVFB_DEPTH: parseNumber(process.env.XVFB_DEPTH, 24),
+    
+    // Booking settings
+    BOOK_URL: process.env.BOOK_URL,
+    BOOK_TIME: process.env.BOOK_TIME,
   };
 
   // Validation
@@ -132,7 +140,7 @@ function createSiteFromUrl(url: string, index: number, globalConfig: GlobalConfi
     check_min: globalConfig.GLOBAL_CHECK_MIN,
     check_max: globalConfig.GLOBAL_CHECK_MAX,
     wait_until: globalConfig.WAIT_UNTIL,
-    headless: globalConfig.PLAYWRIGHT_HEADLESS,
+      headless: globalConfig.PUPPETEER_HEADLESS,
     relevance_mode: 'strict',
     goal_keywords: ['available', 'availability', 'open', 'book', 'reserve', 'slots', 'seats', 'tables'],
     goal_negative_hints: ['sold out', 'fully booked', 'waitlist', 'notify'],
@@ -164,7 +172,7 @@ export function loadSitesConfig(): SiteConfig[] {
       check_min: Math.floor((globalConfig.CHECK_INTERVAL_MINUTES || 240) / 60) || globalConfig.GLOBAL_CHECK_MIN,
       check_max: Math.ceil((globalConfig.CHECK_INTERVAL_MINUTES || 240) / 60) || globalConfig.GLOBAL_CHECK_MAX,
       wait_until: globalConfig.WAIT_UNTIL,
-      headless: globalConfig.PLAYWRIGHT_HEADLESS,
+      headless: globalConfig.PUPPETEER_HEADLESS,
       relevance_mode: 'loose', // Legacy mode defaults to loose
       goal_keywords: ['available', 'availability', 'open', 'book', 'reserve', 'slots', 'seats', 'tables'],
       goal_negative_hints: ['sold out', 'fully booked', 'waitlist', 'notify'],

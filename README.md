@@ -1,10 +1,10 @@
-# Visual Watcher (Playwright + GPT + Discord)
+# Visual Watcher (Puppeteer + GPT + Discord + Booking Bot)
 
-A sophisticated multi-site watcher that monitors web pages for changes with goal-aware relevance filtering and intelligent summaries sent to Discord.
+A sophisticated multi-site watcher that monitors web pages for changes with goal-aware relevance filtering and intelligent summaries sent to Discord. Now includes an automated booking bot for reservation systems.
 
 ## Features
 
-- 🎭 **Playwright Integration**: Uses shared Chromium browser with per-site contexts
+- 🤖 **Puppeteer Real Browser**: Uses undetected Chromium browser that bypasses bot detection (Cloudflare, etc.)
 - 🤖 **Goal-Aware GPT Analysis**: Leverages OpenAI's GPT with heuristic pre-filtering for relevant changes
 - 📢 **Enhanced Discord Notifications**: Rich notifications with goal context and relevance reasoning
 - 🗓️ **Multi-Site Monitoring**: Configure multiple sites with individual goals and schedules
@@ -14,6 +14,8 @@ A sophisticated multi-site watcher that monitors web pages for changes with goal
 - 💾 **Organized Storage**: Per-site baselines in structured data directory
 - 🚦 **Concurrency Control**: Configurable worker pool to manage resource usage
 - 🛡️ **Error Resilience**: Graceful error handling with throttled notifications
+- 📚 **Automated Booking Bot**: Schedule precise booking attempts with intelligent button detection
+- 🕐 **Time-Based Execution**: Launch booking attempts at exact specified times
 
 ## Setup
 
@@ -22,7 +24,6 @@ A sophisticated multi-site watcher that monitors web pages for changes with goal
    git clone <your-repo-url> visualwatch
    cd visualwatch
    npm install
-   npm run playwright:install
    ```
 
 2. **Environment Configuration**
@@ -46,7 +47,15 @@ A sophisticated multi-site watcher that monitors web pages for changes with goal
    - Monitors the main content area of each page
    - Applies standard availability keywords
 
-3. **Advanced Configuration (Optional)**
+3. **Booking Bot Configuration (Optional)**
+   ```bash
+   # Add these to your .env file for automated booking
+   BOOK_URL="https://your-booking-site.com/reservations"
+   BOOK_TIME="10:00"  # Time to execute booking (HH:MM format)
+   PUPPETEER_HEADLESS=false  # Keep browser visible for manual completion
+   ```
+
+4. **Advanced Configuration (Optional)**
    For fine-tuned control, create a `sites.yaml` file:
    
    ```yaml
@@ -76,10 +85,18 @@ A sophisticated multi-site watcher that monitors web pages for changes with goal
            flags: "g"
    ```
 
-4. **Run the Watcher**
+4. **Run the Applications**
    ```bash
-   # Development mode
+   # Website monitoring (main application)
    npm run dev
+   
+   # Booking bot (scheduled booking attempts)
+   npm run book
+   
+   # Tock reservation bot (continuous monitoring for specific use case)
+   npm run tock
+   # or
+   npm run juggle
    
    # Production mode
    npm run build
@@ -102,6 +119,14 @@ A sophisticated multi-site watcher that monitors web pages for changes with goal
 | `LOG_LEVEL` | ❌ | `info` | Logging level (debug/info/warn/error) |
 | `SEND_BASELINE_NOTICE` | ❌ | `true` | Send Discord notice for new baselines |
 
+### Booking Bot Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BOOK_URL` | ✅ | - | URL of the booking/reservation page |
+| `BOOK_TIME` | ✅ | - | Time to execute booking (HH:MM or HH:MM:SS format) |
+| `PUPPETEER_HEADLESS` | ❌ | `true` | Set to `false` to see browser (recommended for booking) |
+
 ### Legacy Support (Single Site)
 
 | Variable | Required | Default | Description |
@@ -122,7 +147,7 @@ Each site in `sites.yaml` supports these fields:
 | `selector` | ❌ | `main` | CSS selector to monitor |
 | `check_min` | ❌ | `4` | Minimum minutes between checks |
 | `check_max` | ❌ | `6` | Maximum minutes between checks |
-| `wait_until` | ❌ | `networkidle` | Playwright wait condition |
+| `wait_until` | ❌ | `networkidle` | Puppeteer wait condition |
 | `headless` | ❌ | `true` | Run browser headlessly |
 | `watch_goal` | ❌ | - | Description of what to watch for |
 | `goal_date` | ❌ | - | Target date to monitor (YYYY-MM-DD) |
@@ -136,8 +161,10 @@ Each site in `sites.yaml` supports these fields:
 
 - `load`: Wait for the load event
 - `domcontentloaded`: Wait for DOMContentLoaded event
-- `networkidle`: Wait for network to be idle (recommended)
-- `commit`: Wait for navigation commit
+- `networkidle0`: Wait for network to be idle (no requests for 500ms) - recommended
+- `networkidle2`: Wait for network to be idle (no more than 2 requests for 500ms)
+- `networkidle`: Legacy alias for `networkidle0`
+- `commit`: Wait for navigation commit (mapped to `domcontentloaded`)
 
 ## Production Deployment
 
@@ -146,7 +173,7 @@ Each site in `sites.yaml` supports these fields:
 1. Create service file `/etc/systemd/system/visualwatch.service`:
    ```ini
    [Unit]
-   Description=Visual Watcher (Playwright + GPT + Discord)
+   Description=Visual Watcher (Puppeteer + GPT + Discord + Booking Bot)
    After=network-online.target
 
    [Service]
@@ -168,6 +195,41 @@ Each site in `sites.yaml` supports these fields:
    sudo systemctl status visualwatch
    journalctl -u visualwatch -f
    ```
+
+## Booking Bot Usage
+
+The booking bot allows you to schedule precise booking attempts at specific times. It's designed to:
+
+1. **Wait until the exact specified time** (e.g., 10:00 AM when reservations open)
+2. **Launch the booking page** in a visible browser window
+3. **Automatically click the "Book" button** when found
+4. **Keep the browser open** for you to manually complete the booking process
+
+### Example Usage
+
+```bash
+# Set up your .env file
+BOOK_URL="https://resy.com/cities/ny/venues/example-restaurant"
+BOOK_TIME="10:00"  # 10:00 AM today (or tomorrow if already past)
+PUPPETEER_HEADLESS=false  # Keep browser visible
+
+# Run the booking bot
+npm run book
+```
+
+The bot will:
+- Calculate the wait time until your specified booking time
+- Launch the browser at the exact moment
+- Navigate to your booking URL
+- Search for and click booking buttons (supports Tock, Resy, and generic booking sites)
+- Leave the browser open for you to complete the reservation
+
+### Supported Booking Sites
+
+The bot includes intelligent button detection for:
+- **Tock**: Looks for `button[data-testid="booking-card-button"]` with "Book" text
+- **Generic sites**: Searches for buttons/links with "book" in text or class names
+- **Fallback**: Tries multiple common booking button selectors
 
 ## How It Works
 

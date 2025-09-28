@@ -9,8 +9,7 @@
     "playwright:install": "npx playwright install --with-deps",
     "install:xvfb": "./install-xvfb.sh",
     "test:browser": "npm run build && node test-headless.js",
-    "test:xvfb": "npm run build && node test-headless.js",
-    "tock": "npx tsx src/tock-main.ts"
+    "test:xvfb": "npm run build && node test-headless.js"
   },
   "dependencies": {
     "@playwright/test": "^1.48.2",

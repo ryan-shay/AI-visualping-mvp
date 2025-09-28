@@ -1,4 +1,5 @@
-import { chromium, Browser, BrowserContext } from '@playwright/test';
+import { connect } from 'puppeteer-real-browser';
+import type { Browser } from 'rebrowser-puppeteer-core';
 import { log } from './logger.js';
 import { loadGlobalConfig } from './config.js';
 import { ensureXvfbForHeadfull, stopGlobalXvfb } from './xvfb.js';
@@ -10,7 +11,7 @@ export async function getSharedBrowser(headless?: boolean): Promise<Browser> {
   // Load config to get headless setting if not provided
   if (headless === undefined) {
     const config = loadGlobalConfig();
-    headless = config.PLAYWRIGHT_HEADLESS;
+    headless = config.PUPPETEER_HEADLESS;
   }
 
   // If browser exists but with different headless mode, close it
@@ -25,28 +26,66 @@ export async function getSharedBrowser(headless?: boolean): Promise<Browser> {
     await ensureXvfbForHeadfull(headless);
     
     log('info', `Launching shared Chromium browser (headless: ${headless})`);
-    sharedBrowser = await chromium.launch({ 
+    
+    const { browser } = await connect({
       headless: headless,
-      // Add some useful debugging options when in headfull mode
-      ...(headless === false && {
-        slowMo: 100, // Slow down actions by 100ms for visibility
-        devtools: false // Set to true if you want devtools open
-      })
+      args: [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor'
+      ],
+      customConfig: {},
+      turnstile: true, // Enable Cloudflare Turnstile bypass
+      connectOption: {
+        defaultViewport: null
+      },
+      disableXvfb: false,
+      ignoreAllFlags: false
     });
+    
+    sharedBrowser = browser;
     currentHeadlessMode = headless;
   }
   return sharedBrowser;
 }
 
-export async function newContext(headless?: boolean): Promise<BrowserContext> {
+export async function newPage(headless?: boolean): Promise<any> {
   const browser = await getSharedBrowser(headless);
   
-  // Create context with user agent
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36'
-  });
+  // Create new page directly from browser
+  const page = await browser.newPage();
   
-  return context;
+  // Set user agent
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36');
+  
+  // Set viewport if needed
+  await page.setViewport({ width: 1920, height: 1080 });
+  
+  return page;
+}
+
+// Legacy compatibility function - returns a page instead of context
+export async function newContext(headless?: boolean): Promise<{ newPage: () => Promise<any>, close: () => Promise<void> }> {
+  const browser = await getSharedBrowser(headless);
+  
+  // Return a context-like object that creates pages from the shared browser
+  return {
+    newPage: async () => {
+      const page = await browser.newPage();
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36');
+      await page.setViewport({ width: 1920, height: 1080 });
+      return page;
+    },
+    close: async () => {
+      // Don't close the shared browser, just log
+      log('debug', 'Context close called - shared browser remains open');
+    }
+  };
 }
 
 export async function closeSharedBrowser(): Promise<void> {
