@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext } from '@playwright/test';
+import { chromium, Browser, BrowserContext } from 'playwright';
 import { log } from './logger.js';
 import { loadGlobalConfig } from './config.js';
 import { ensureXvfbForHeadfull, stopGlobalXvfb } from './xvfb.js';

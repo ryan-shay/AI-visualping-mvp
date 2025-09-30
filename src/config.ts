@@ -29,6 +29,13 @@ export type GlobalConfig = {
   OPENAI_API_KEY: string;
   DISCORD_WEBHOOK_URL: string;
   
+  // Tock bot configuration
+  TOCK_URL?: string;
+  
+  // Book bot configuration
+  BOOK_URL?: string;
+  BOOK_TIME?: string;
+  
   // Simple multi-site support
   WATCH_URLS?: string;
   
@@ -73,6 +80,13 @@ export function loadGlobalConfig(): GlobalConfig {
   const config: GlobalConfig = {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
     DISCORD_WEBHOOK_URL: process.env.DISCORD_WEBHOOK_URL || '',
+    
+    // Tock bot configuration
+    TOCK_URL: process.env.TOCK_URL,
+    
+    // Book bot configuration
+    BOOK_URL: process.env.BOOK_URL,
+    BOOK_TIME: process.env.BOOK_TIME,
     
     // Simple multi-site support
     WATCH_URLS: process.env.WATCH_URLS,

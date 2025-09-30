@@ -10,10 +10,11 @@
     "install:xvfb": "./install-xvfb.sh",
     "test:browser": "npm run build && node test-headless.js",
     "test:xvfb": "npm run build && node test-headless.js",
-    "tock": "npx tsx src/tock-main.ts"
+    "juggle": "npx tsx src/tock-main.ts",
+    "book": "npx tsx src/book-main.ts"
   },
   "dependencies": {
-    "@playwright/test": "^1.48.2",
+    "playwright": "^1.48.2",
     "dotenv": "^16.4.5",
     "openai": "^4.57.0",
     "undici": "^6.19.8",

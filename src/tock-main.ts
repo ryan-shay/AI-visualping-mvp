@@ -2,14 +2,21 @@ import 'dotenv/config';
 import { TockReservationBot } from './tock-bot.js';
 import { log } from './logger.js';
 import { closeSharedBrowser } from './browser.js';
+import { loadGlobalConfig } from './config.js';
 
 async function main(): Promise<void> {
-  // The specific Tock URL for Alinea reservations
-  const tockUrl = 'https://www.exploretock.com/alinea/search?date=2025-10-15&size=6&time=19%3A00';
+  const config = loadGlobalConfig();
+  
+  if (!config.TOCK_URL) {
+    log('error', 'TOCK_URL environment variable is required');
+    process.exit(1);
+  }
+  
+  const tockUrl = config.TOCK_URL;
   
   try {
-    log('info', '🍽️ Starting Tock Reservation Bot for Alinea');
-    log('info', '🎯 Target: October 15, 2025 at 7:00 PM for 6 people');
+    log('info', '🍽️ Starting Tock Reservation Bot');
+    log('info', `🎯 Target URL: ${tockUrl}`);
     
     const bot = new TockReservationBot(tockUrl);
     await bot.start();
